@@ -53,23 +53,30 @@ class ImportRequestsToRepeater : BurpExtension {
         val settingsFormBuilder = formGenerator.getSettingsFormBuilder()
         formGenerator.addSaveCallback { formElement, form ->
             Logger.debugLog("Starting save callback")
-            val progressDialog = uihelper.uibooster.showProgressDialog("Loading Files in Repeater","Import Progress",1,lastImportedFiles.currentValue.size)
+            val progressDialog = uihelper.uibooster.showProgressDialog("Loading Files in Repeater","Import Progress",0,lastImportedFiles.currentValue.size)
+            var finished = 0
             lastImportedFiles.currentValue.forEachIndexed({ index, filePath ->
-                progressDialog.setProgress(index+1)
                 Logger.debugLog("filePath: $filePath")
-                val f = File(filePath)
-                if (f.exists()) {
-                    Logger.debugLog("file exists")
-                    val fileContent = if (useUTF8CharsetSetting.currentValue) f.readText(Charsets.UTF_8) else f.readText(Charsets.ISO_8859_1)
-                    //Logger.debugLog("contents: $fileContent")
-                    var httpRequest =
-                        HttpRequest.httpRequest("${requestTemplateSetting.currentValue.joinToString("\r\n").trim()}\r\n\r\n$fileContent")
-                    if(httpRequest.hasHeader("Host"))
-                        httpRequest = httpRequest.withService(HttpService.httpService(httpRequest.headerValue("Host"),true))
-                    api.repeater().sendToRepeater(httpRequest, f.nameWithoutExtension)
-                }
-                else
-                    Logger.errorLog("couldn't find file: $filePath")
+                Thread.startVirtualThread(
+                    Runnable {
+                        val f = File(filePath)
+                        if (f.exists()) {
+                            Logger.debugLog("file exists")
+                            val tabname = f.nameWithoutExtension
+                            val fileContent = if (useUTF8CharsetSetting.currentValue) f.readText(Charsets.UTF_8) else f.readText(Charsets.ISO_8859_1)
+                            //Logger.debugLog("contents: $fileContent")
+                            var httpRequest =
+                                HttpRequest.httpRequest("${requestTemplateSetting.currentValue.joinToString("\r\n").trim()}\r\n\r\n$fileContent")
+                            if(httpRequest.hasHeader("Host"))
+                                httpRequest = httpRequest.withService(HttpService.httpService(httpRequest.headerValue("Host"),true))
+                            api.repeater().sendToRepeater(httpRequest, f.nameWithoutExtension)
+                        }
+                        else
+                            Logger.errorLog("couldn't find file: $filePath")
+                        finished++
+                        progressDialog.setProgress(finished)
+                    })
+
             })
             progressDialog.setMessage("Done!")
             progressDialog.close()
